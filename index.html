@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Net-worth Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="shortcut icon" type="image/png" href="robinhoodlogo.png"/>
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <style>
+    /* ———  GLOBAL  —————————————————————————— */
+    :root {
+      --green:#00c805;
+      --gold:#ffd700;
+      --font:"Trebuchet MS",sans-serif;
+    }
+    html,body{height:100%;margin:0}
+    body{
+      display:flex;flex-direction:column;align-items:center;
+      font-family:var(--font);text-align:center;background:#fff;
+    }
+    /* ———  HEADLINE  ————————————————————————— */
+    #headlineWrap{
+      display:flex;flex-direction:column;align-items:center;gap:4px;
+      margin:32px 0 12px;line-height:1;user-select:none;
+      color: var(--green); /* Default to green */
+    }
+    #myVariableDisplay{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums}
+    #gainHeadline{font-size:16px;font-weight:600; min-height: 1.2em;} /* Add min-height to prevent layout shift */
+    /* ———  CHART —————————————————————————— */
+    #container{width:70%;height:70vh}
+
+    /* --- CUSTOM LEGEND STYLES --- */
+    .highcharts-legend-item-hidden > text {
+      text-decoration: none !important;
+      fill: #a0a0a0 !important;
+    }
+    .highcharts-legend-item-hidden > path {
+      stroke: #a0a0a0 !important;
+      fill: #a0a0a0 !important;
+    }
+    .highcharts-legend-item.highcharts-series-inactive > text {
+        text-decoration: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="headlineWrap">
+    <div id="myVariableDisplay">$0</div>
+    <div id="gainHeadline">+$0 (+0.00%)</div>
+  </div>
+  <div id="container"></div>
+
+<script type="module">
+/* =====================================================================
+   CONFIG / HELPERS
+   ===================================================================== */
+const GREEN = getComputedStyle(document.documentElement).getPropertyValue('--green');
+const GOLD  = getComputedStyle(document.documentElement).getPropertyValue('--gold');
+const headlineWrapEl = document.getElementById('headlineWrap');
+
+async function loadJsonData(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`Failed to fetch ${path}: ${res.statusText}`);
+  const rawData = await res.json();
+  return rawData.map(item => {
+    if (!Array.isArray(item) || item.length !== 2) {
+        console.warn("Invalid data item format:", item, "in", path);
+        return [Date.now(), 0]; 
+    }
+    const date = new Date(item[0]);
+    if (isNaN(date.getTime())) {
+        console.warn("Invalid date string:", item[0], "in", path);
+        return [Date.now(), item[1] || 0]; 
+    }
+    return [date.getTime(), item[1]];
+  }).sort((a, b) => a[0] - b[0]);
+}
+
+const fmt = (n,f=2)=>
+  n.toLocaleString(undefined,{minimumFractionDigits:f,maximumFractionDigits:f})
+   .replace(/\.00$/,'');
+
+const displayEl = document.getElementById('myVariableDisplay');
+const gainEl    = document.getElementById('gainHeadline');
+
+let chart, netSeries, contribSeries, twrrSeriesData;
+
+function calculateRunningTotalTimeWeightedReturnSeries(yValues_cumulativeContributions, yValues_portfolioValues) {
+    const n = yValues_portfolioValues.length;
+    const twrrSeries = [];
+    if (n !== yValues_cumulativeContributions.length) {
+        console.error("TWRR CALC: Y-value arrays MUST be the same length! PV_Y:", n, "Contrib_Y:", yValues_cumulativeContributions.length);
+        for (let i = 0; i < n; i++) twrrSeries.push(NaN);
+        return twrrSeries;
+    }
+    if (n === 0) return [];
+    twrrSeries.push(0.0);
+    if (n === 1) return twrrSeries;
+    let currentOverallReturnFactor = 1.0;
+    for (let i = 1; i < n; i++) {
+        const beginningValue_period = yValues_portfolioValues[i-1];
+        const cashFlow_thisPeriod = yValues_cumulativeContributions[i] - yValues_cumulativeContributions[i-1];
+        const endValue_period = yValues_portfolioValues[i];
+        const baseForThisPeriodReturn = beginningValue_period + cashFlow_thisPeriod;
+        let periodReturnFactor = 1.0;
+        if (baseForThisPeriodReturn !== 0) {
+            periodReturnFactor = endValue_period / baseForThisPeriodReturn;
+        } else {
+            periodReturnFactor = (endValue_period === 0) ? 1.0 : 1.0; 
+            if (endValue_period !== 0) console.warn(`TWRR CALC (idx ${i}): Base is 0, EV is ${endValue_period}. Using PeriodFactor=1.0`);
+        }
+        if (!isFinite(periodReturnFactor)) {
+            console.warn(`TWRR CALC (idx ${i}): PeriodFactor ${periodReturnFactor} is not finite. Defaulting to 1.0.`);
+            periodReturnFactor = 1.0;
+        }
+        currentOverallReturnFactor *= periodReturnFactor;
+        twrrSeries.push((currentOverallReturnFactor - 1) * 100);
+    }
+    return twrrSeries;
+}
+
+function updateHeadline(netWorthVal, contribVal, pointIndex) {
+    const netWorthIsVisible = netSeries && netSeries.visible;
+    const contribIsVisible = contribSeries && contribSeries.visible;
+
+    if (contribIsVisible && !netWorthIsVisible) {
+        // ONLY Contributions visible
+        headlineWrapEl.style.color = GOLD;
+        displayEl.textContent = `$${fmt(contribVal)}`;
+        gainEl.textContent = ""; // Remove "Total Contributions" text
+    } else {
+        // Default: Net Worth is visible (or both are, or initial state)
+        headlineWrapEl.style.color = GREEN;
+        const gain = netWorthVal - contribVal;
+        let currentTwrr = 0;
+
+        if (twrrSeriesData && pointIndex >= 0 && pointIndex < twrrSeriesData.length && !isNaN(twrrSeriesData[pointIndex])) {
+            currentTwrr = twrrSeriesData[pointIndex];
+        } else if (twrrSeriesData && twrrSeriesData.length > 0) {
+            currentTwrr = twrrSeriesData.at(-1);
+        }
+
+        const twrrSign = currentTwrr > 0 ? '+' : '';
+        displayEl.textContent = `$${fmt(netWorthVal)}`;
+        gainEl.textContent =
+            `${gain >= 0 ? '+' : '-'}$${fmt(Math.abs(gain))} (${twrrSign}${fmt(currentTwrr, 2)}%)`;
+    }
+}
+
+function createGraph(balanceDataForChart, contribDataForChart){
+  Highcharts.setOptions({lang:{thousandsSep:','}});
+  chart = Highcharts.chart('container',{
+    chart:{
+        type:'line',
+        zoomType:'x',
+        animation: false // Disable animations globally for the chart (can be more specific if needed)
+    },
+    title:{text:''},
+    xAxis:{type:'datetime', dateTimeLabelFormats:{day:'%e %b %Y'}, labels:{style:{color:'#999'}}, lineColor:'#999'},
+    yAxis:{gridLineWidth:0, labels:{style:{color:'#999'}}, lineColor:'#999', title:{text:null}},
+    tooltip: { /* ... same as before ... */
+      shared: true, useHTML: true,
+      formatter() {
+        const pts  = this.points;
+        const date = Highcharts.dateFormat('%e %b %Y', pts[0].x);
+        const rows = pts.map(p => {
+          const label = p.series.name === 'Net worth' ? 'Net Worth:' : 'Contributions:';
+          return `${label}<br><span style="color:${p.series.color};font-weight:bold">$${fmt(p.y)}</span><br>`;
+        }).join('');
+        return `<div style="text-align:center;font-weight:600">${rows}${date}</div>`;
+      }
+    },
+    legend:{layout:'vertical',align:'right',verticalAlign:'middle'},
+    plotOptions:{
+      series:{
+        animation: false, // Disable animation specifically for series toggling
+        marker:{enabled:false,states:{hover:{radius:4.5}}},
+        states:{ hover:{lineWidthPlus:0}, inactive: { opacity: 0.4, animation: false } }, // Disable animation for inactive state too
+        events: {
+            legendItemClick: function () {
+                // Default action is to toggle visibility. Let it happen.
+                // Then, update the headline.
+                setTimeout(() => { 
+                    if (netSeries?.points?.length > 0) {
+                         const lastNetPoint = netSeries.points.at(-1);
+                         // Use actual Y value if series has data, otherwise use the one from the visible series (or 0)
+                         const lastContribPoint = contribSeries?.points?.length > 0 ? contribSeries.points.at(-1) : {y:0, index: netSeries.points.length -1};
+                         
+                         let activeNetY = netSeries.visible ? lastNetPoint.y : (contribSeries.visible ? lastContribPoint.y : 0) ;
+                         let activeContribY = contribSeries.visible ? lastContribPoint.y : (netSeries.visible ? lastNetPoint.y : 0);
+                         
+                         // Adjust values if only one is visible for cleaner headline logic
+                         if (contribSeries.visible && !netSeries.visible) {
+                            activeNetY = lastContribPoint.y; // For display purposes, treat net as contrib value
+                         } else if (netSeries.visible && !contribSeries.visible) {
+                            activeContribY = lastNetPoint.y; // For gain calculation, treat contrib as net (gain will be 0)
+                         }
+
+                        updateHeadline(
+                            activeNetY,
+                            activeContribY,
+                            netSeries.points.length - 1
+                        );
+                    }
+                }, 0);
+                return true; 
+            }
+        },
+        point:{
+          events:{ /* ... mouseOver/mouseOut same as before ... */
+            mouseOver(){
+              const idx   = this.index;
+              const chartInstance = this.series.chart;
+              if (!chartInstance.series[0]?.data[idx] || !chartInstance.series[1]?.data[idx]) return;
+              const otherPoint = chartInstance.series.find(s=>s!==this.series).data[idx];
+              this.setState('hover');
+              if (otherPoint) otherPoint.setState('hover');
+              const netVal     = chartInstance.series[0].data[idx].y;
+              const contribVal = chartInstance.series[1].data[idx].y;
+              updateHeadline(netVal, contribVal, idx);
+              if (otherPoint) chartInstance.tooltip.refresh([this, otherPoint]);
+              else chartInstance.tooltip.refresh([this]);
+            },
+            mouseOut(){
+              this.setState();
+              const chartInstance = this.series.chart;
+              const otherPoint = chartInstance.series.find(s => s !== this.series)?.data[this.index];
+              if (otherPoint) otherPoint.setState();
+              chartInstance.tooltip.hide();
+              if (netSeries?.points?.length > 0) { 
+                const tailNet     = netSeries.points.at(-1);
+                const tailContrib = contribSeries?.points?.at(-1) || {y: tailNet.y};
+                updateHeadline(tailNet.y, tailContrib.y, netSeries.points.length - 1);
+              }
+            }
+          }
+        }
+      }
+    },
+    series:[
+      {name:'Net worth', data:balanceDataForChart, color:GREEN, lineColor:GREEN, zIndex: 2},
+      {
+        name:'Contributions',
+        data:contribDataForChart,
+        color:GOLD,
+        lineColor:GOLD,
+        zIndex: 1,
+        visible: false
+      }
+    ],
+    responsive:{rules:[{condition:{maxWidth:500},chartOptions:{legend:{layout:'horizontal',align:'center',verticalAlign:'bottom'}}}]}
+  });
+
+  netSeries     = chart.series[0];
+  contribSeries = chart.series[1];
+  padContribForChartDisplay();
+
+  if (netSeries?.points?.length > 0) {
+    const lastNet = netSeries.points.at(-1);
+    const lastContribValueForCalc = contribSeries?.data?.length > 0 ? contribSeries.data.at(-1).y : (contribSeries?.points?.length > 0 ? contribSeries.points.at(-1).y : lastNet.y);
+    updateHeadline(lastNet.y, lastContribValueForCalc, netSeries.points.length - 1);
+  } else {
+    updateHeadline(0,0,0);
+  }
+
+  chart.container.addEventListener('mouseleave',()=>{
+    if (netSeries?.points?.length > 0) {
+      const tailNet     = netSeries.points.at(-1);
+      const tailContrib = contribSeries?.points?.at(-1) || {y: tailNet.y};
+      updateHeadline(tailNet.y, tailContrib.y, netSeries.points.length - 1);
+    }
+  });
+}
+
+function padContribForChartDisplay(){ /* ... same as before ... */
+  if (!netSeries?.points || !contribSeries?.points) return;
+  const netPoints = netSeries.points;
+  const contribPoints = contribSeries.points;
+  if (netPoints.length > contribPoints.length && netPoints.length > 0) {
+    const pointsToAdd = [];
+    const lastContribPoint = contribPoints.length > 0 ? contribPoints.at(-1) : null;
+    const lastContribY = lastContribPoint ? lastContribPoint.y : 0;
+    for (let i = contribPoints.length; i < netPoints.length; i++) {
+      pointsToAdd.push([netPoints[i].x, lastContribY]);
+    }
+    if (pointsToAdd.length > 0) {
+      pointsToAdd.forEach(point => contribSeries.addPoint(point, false, false, false));
+    }
+  }
+}
+window.appendNetworth = (newPoints) => { console.warn("appendNetworth not fully implemented"); };
+window.appendContrib = (newPoints) => { console.warn("appendContrib not fully implemented"); };
+function alignAndPrepareData(rawDataNetWorth, rawDataContrib) { /* ... same as before ... */
+    const netWorthMap = new Map(rawDataNetWorth);
+    const contribMap = new Map(rawDataContrib);
+    const allTimestamps = new Set([...rawDataNetWorth.map(p => p[0]), ...rawDataContrib.map(p => p[0])]);
+    const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
+    const yValues_portfolio = [];
+    const yValues_contributions = [];
+    const alignedHcNetWorth = [];
+    const alignedHcContrib = [];
+    let lastKnownNetWorth = 0;
+    let lastKnownContrib = 0;
+    if (sortedTimestamps.length > 0) {
+        lastKnownNetWorth = netWorthMap.get(sortedTimestamps[0]) ?? 0;
+        lastKnownContrib = contribMap.get(sortedTimestamps[0]) ?? 0;
+    }
+    for (const ts of sortedTimestamps) {
+        const currentNetWorth = netWorthMap.has(ts) ? netWorthMap.get(ts) : lastKnownNetWorth;
+        const currentContrib = contribMap.has(ts) ? contribMap.get(ts) : lastKnownContrib;
+        yValues_portfolio.push(currentNetWorth);
+        yValues_contributions.push(currentContrib);
+        alignedHcNetWorth.push([ts, currentNetWorth]);
+        alignedHcContrib.push([ts, currentContrib]);
+        lastKnownNetWorth = currentNetWorth;
+        lastKnownContrib = currentContrib;
+    }
+    return { yPortfolio: yValues_portfolio, yContributions: yValues_contributions, hcNetWorth: alignedHcNetWorth, hcContrib: alignedHcContrib };
+}
+
+(async()=>{ // BOOTSTRAP
+  try{
+    const rawHcNetWorth = await loadJsonData('networth.json');
+    const rawHcContrib = await loadJsonData('contributions.json');
+    if (rawHcNetWorth.length === 0) {
+        displayEl.textContent = '⚠️ No net worth data';
+        gainEl.textContent = '';
+        return;
+    }
+    const { yPortfolio, yContributions, hcNetWorth, hcContrib } = alignAndPrepareData(rawHcNetWorth, rawHcContrib);
+    if (yPortfolio.length > 0) {
+        twrrSeriesData = calculateRunningTotalTimeWeightedReturnSeries(yContributions, yPortfolio);
+    } else {
+        twrrSeriesData = [];
+    }
+    createGraph(hcNetWorth, hcContrib);
+  }catch(e){
+    console.error("Bootstrap error:", e);
+    displayEl.textContent='⚠️ data load failed';
+    gainEl.textContent = '';
+  }
+})();
+</script>
+</body>
+</html>
