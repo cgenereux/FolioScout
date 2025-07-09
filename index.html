@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Net Worth Tracker</title>
+  <title>Net worth Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="shortcut icon" type="image/png" href="robinhoodlogo.png"/>
   <script src="https://code.highcharts.com/highcharts.js"></script>
   <style>
-    /* ———  GLOBAL  ————————————————————————— */
+    /* ———  GLOBAL  —————————————————————————— */
     :root {
       --green:#00c805;
       --gold:#ffd700;
@@ -18,7 +18,7 @@
       display:flex;flex-direction:column;align-items:center;
       font-family:var(--font);text-align:center;background:#fff;
     }
-    /* ———  HEADLINE  ———————————————————————— */
+    /* ———  HEADLINE  ————————————————————————— */
     #headlineWrap{
       display:flex;flex-direction:column;align-items:center;gap:4px;
       margin:32px 0 12px;line-height:1;user-select:none;
@@ -26,7 +26,7 @@
     }
     #myVariableDisplay{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums}
     #gainHeadline{font-size:16px;font-weight:600; min-height: 1.2em;} /* Add min-height to prevent layout shift */
-    /* ————  CHART ———————————————————————— */
+    /* ———  CHART —————————————————————————— */
     #container{width:70%;height:70vh}
 
     /* --- CUSTOM LEGEND STYLES --- */
@@ -57,6 +57,7 @@
 const GREEN = getComputedStyle(document.documentElement).getPropertyValue('--green');
 const GOLD  = getComputedStyle(document.documentElement).getPropertyValue('--gold');
 const headlineWrapEl = document.getElementById('headlineWrap');
+const DAY_MS = 24 * 60 * 60 * 1000; // Milliseconds in a day
 
 async function loadJsonData(path) {
   const res = await fetch(path);
@@ -84,8 +85,13 @@ const displayEl = document.getElementById('myVariableDisplay');
 const gainEl    = document.getElementById('gainHeadline');
 
 let chart, netSeries, contribSeries, twrrSeriesData;
+// Store the full aligned data used for TWRR calculation globally if we need to append to it
+let currentAlignedHcNetWorth = [];
+let currentAlignedHcContrib = [];
+
 
 function calculateRunningTotalTimeWeightedReturnSeries(yValues_cumulativeContributions, yValues_portfolioValues) {
+    // ... (same as before, no changes here) ...
     const n = yValues_portfolioValues.length;
     const twrrSeries = [];
     if (n !== yValues_cumulativeContributions.length) {
@@ -120,26 +126,23 @@ function calculateRunningTotalTimeWeightedReturnSeries(yValues_cumulativeContrib
 }
 
 function updateHeadline(netWorthVal, contribVal, pointIndex) {
+    // ... (same as before, no changes here) ...
     const netWorthIsVisible = netSeries && netSeries.visible;
     const contribIsVisible = contribSeries && contribSeries.visible;
 
     if (contribIsVisible && !netWorthIsVisible) {
-        // ONLY Contributions visible
         headlineWrapEl.style.color = GOLD;
         displayEl.textContent = `$${fmt(contribVal)}`;
-        gainEl.textContent = ""; // Remove "Total Contributions" text
+        gainEl.textContent = ""; 
     } else {
-        // Default: Net Worth is visible (or both are, or initial state)
         headlineWrapEl.style.color = GREEN;
         const gain = netWorthVal - contribVal;
         let currentTwrr = 0;
-
         if (twrrSeriesData && pointIndex >= 0 && pointIndex < twrrSeriesData.length && !isNaN(twrrSeriesData[pointIndex])) {
             currentTwrr = twrrSeriesData[pointIndex];
         } else if (twrrSeriesData && twrrSeriesData.length > 0) {
             currentTwrr = twrrSeriesData.at(-1);
         }
-
         const twrrSign = currentTwrr > 0 ? '+' : '';
         displayEl.textContent = `$${fmt(netWorthVal)}`;
         gainEl.textContent =
@@ -150,11 +153,7 @@ function updateHeadline(netWorthVal, contribVal, pointIndex) {
 function createGraph(balanceDataForChart, contribDataForChart){
   Highcharts.setOptions({lang:{thousandsSep:','}});
   chart = Highcharts.chart('container',{
-    chart:{
-        type:'line',
-        zoomType:'x',
-        animation: false // Disable animations globally for the chart (can be more specific if needed)
-    },
+    chart:{ type:'line', zoomType:'x', animation: false },
     title:{text:''},
     xAxis:{type:'datetime', dateTimeLabelFormats:{day:'%e %b %Y'}, labels:{style:{color:'#999'}}, lineColor:'#999'},
     yAxis:{gridLineWidth:0, labels:{style:{color:'#999'}}, lineColor:'#999', title:{text:null}},
@@ -173,27 +172,21 @@ function createGraph(balanceDataForChart, contribDataForChart){
     legend:{layout:'vertical',align:'right',verticalAlign:'middle'},
     plotOptions:{
       series:{
-        animation: false, // Disable animation specifically for series toggling
+        animation: false,
         marker:{enabled:false,states:{hover:{radius:4.5}}},
-        states:{ hover:{lineWidthPlus:0}, inactive: { opacity: 0.4, animation: false } }, // Disable animation for inactive state too
-        events: {
+        states:{ hover:{lineWidthPlus:0}, inactive: { opacity: 0.4, animation: false } },
+        events: { /* ... legendItemClick same as before ... */
             legendItemClick: function () {
-                // Default action is to toggle visibility. Let it happen.
-                // Then, update the headline.
-                setTimeout(() => { 
+                setTimeout(() => {
                     if (netSeries?.points?.length > 0) {
                          const lastNetPoint = netSeries.points.at(-1);
-                         // Use actual Y value if series has data, otherwise use the one from the visible series (or 0)
                          const lastContribPoint = contribSeries?.points?.length > 0 ? contribSeries.points.at(-1) : {y:0, index: netSeries.points.length -1};
-                         
                          let activeNetY = netSeries.visible ? lastNetPoint.y : (contribSeries.visible ? lastContribPoint.y : 0) ;
                          let activeContribY = contribSeries.visible ? lastContribPoint.y : (netSeries.visible ? lastNetPoint.y : 0);
-                         
-                         // Adjust values if only one is visible for cleaner headline logic
                          if (contribSeries.visible && !netSeries.visible) {
-                            activeNetY = lastContribPoint.y; // For display purposes, treat net as contrib value
+                            activeNetY = lastContribPoint.y;
                          } else if (netSeries.visible && !contribSeries.visible) {
-                            activeContribY = lastNetPoint.y; // For gain calculation, treat contrib as net (gain will be 0)
+                            activeContribY = lastNetPoint.y;
                          }
                         updateHeadline(
                             activeNetY,
@@ -202,11 +195,10 @@ function createGraph(balanceDataForChart, contribDataForChart){
                         );
                     }
                 }, 0);
-                return true; 
+                return true;
             }
         },
-        point:{
-          events:{ /* ... mouseOver/mouseOut same as before ... */
+        point:{ events:{ /* ... mouseOver/mouseOut same as before ... */
             mouseOver(){
               const idx   = this.index;
               const chartInstance = this.series.chart;
@@ -226,26 +218,18 @@ function createGraph(balanceDataForChart, contribDataForChart){
               const otherPoint = chartInstance.series.find(s => s !== this.series)?.data[this.index];
               if (otherPoint) otherPoint.setState();
               chartInstance.tooltip.hide();
-              if (netSeries?.points?.length > 0) { 
+              if (netSeries?.points?.length > 0) {
                 const tailNet     = netSeries.points.at(-1);
                 const tailContrib = contribSeries?.points?.at(-1) || {y: tailNet.y};
                 updateHeadline(tailNet.y, tailContrib.y, netSeries.points.length - 1);
               }
             }
-          }
-        }
+        }}
       }
     },
     series:[
-      {name:'Net worth', data:balanceDataForChart, color:GREEN, lineColor:GREEN, zIndex: 2},
-      {
-        name:'Contributions',
-        data:contribDataForChart,
-        color:GOLD,
-        lineColor:GOLD,
-        zIndex: 1,
-        visible: false
-      }
+      { name:'Net worth', data:balanceDataForChart, color:GREEN, lineWidth: 2, zIndex: 2 },
+      { name:'Contributions', data:contribDataForChart, color:GOLD, lineWidth: 1.5, zIndex: 1, visible: false }
     ],
     responsive:{rules:[{condition:{maxWidth:500},chartOptions:{legend:{layout:'horizontal',align:'center',verticalAlign:'bottom'}}}]}
   });
@@ -256,8 +240,8 @@ function createGraph(balanceDataForChart, contribDataForChart){
 
   if (netSeries?.points?.length > 0) {
     const lastNet = netSeries.points.at(-1);
-    const lastContribValueForCalc = contribSeries?.data?.length > 0 ? contribSeries.data.at(-1).y : (contribSeries?.points?.length > 0 ? contribSeries.points.at(-1).y : lastNet.y);
-    updateHeadline(lastNet.y, lastContribValueForCalc, netSeries.points.length - 1);
+    const lastContribYForCalc = contribSeries?.data?.length > 0 ? contribSeries.data.at(-1).y : (contribSeries?.points?.length > 0 ? contribSeries.points.at(-1).y : lastNet.y);
+    updateHeadline(lastNet.y, lastContribYForCalc, netSeries.points.length - 1);
   } else {
     updateHeadline(0,0,0);
   }
@@ -280,15 +264,15 @@ function padContribForChartDisplay(){ /* ... same as before ... */
     const lastContribPoint = contribPoints.length > 0 ? contribPoints.at(-1) : null;
     const lastContribY = lastContribPoint ? lastContribPoint.y : 0;
     for (let i = contribPoints.length; i < netPoints.length; i++) {
-      pointsToAdd.push([netPoints[i].x, lastContribY]);
+      pointsToAdd.push([netPoints[i].x, lastContribY]); // Use X from netSeries
     }
     if (pointsToAdd.length > 0) {
+      // Add points without redrawing for each, then one redraw if necessary
       pointsToAdd.forEach(point => contribSeries.addPoint(point, false, false, false));
     }
   }
 }
-window.appendNetworth = (newPoints) => { console.warn("appendNetworth not fully implemented"); };
-window.appendContrib = (newPoints) => { console.warn("appendContrib not fully implemented"); };
+
 function alignAndPrepareData(rawDataNetWorth, rawDataContrib) { /* ... same as before ... */
     const netWorthMap = new Map(rawDataNetWorth);
     const contribMap = new Map(rawDataContrib);
@@ -301,38 +285,145 @@ function alignAndPrepareData(rawDataNetWorth, rawDataContrib) { /* ... same as b
     let lastKnownNetWorth = 0;
     let lastKnownContrib = 0;
     if (sortedTimestamps.length > 0) {
-        lastKnownNetWorth = netWorthMap.get(sortedTimestamps[0]) ?? 0;
-        lastKnownContrib = contribMap.get(sortedTimestamps[0]) ?? 0;
+        // Initialize with the first available data point or 0
+        const firstTs = sortedTimestamps[0];
+        lastKnownNetWorth = netWorthMap.get(firstTs) ?? (rawDataNetWorth.length > 0 ? rawDataNetWorth[0][1] : 0);
+        lastKnownContrib = contribMap.get(firstTs) ?? (rawDataContrib.length > 0 ? rawDataContrib[0][1] : 0);
+
+        // Ensure the very first points are added if they exist at sortedTimestamps[0]
+        // This loop starts from first principles for all sorted timestamps
     }
+
     for (const ts of sortedTimestamps) {
         const currentNetWorth = netWorthMap.has(ts) ? netWorthMap.get(ts) : lastKnownNetWorth;
-        const currentContrib = contribMap.has(ts) ? contribMap.get(ts) : lastKnownContrib;
+        const currentContrib = contribMap.has(ts) ? contribMap.get(ts) : lastKnownContrib; // Assumes contributions are CUMULATIVE
+        
         yValues_portfolio.push(currentNetWorth);
         yValues_contributions.push(currentContrib);
         alignedHcNetWorth.push([ts, currentNetWorth]);
         alignedHcContrib.push([ts, currentContrib]);
+        
         lastKnownNetWorth = currentNetWorth;
         lastKnownContrib = currentContrib;
     }
     return { yPortfolio: yValues_portfolio, yContributions: yValues_contributions, hcNetWorth: alignedHcNetWorth, hcContrib: alignedHcContrib };
 }
 
+// --- FULLY IMPLEMENTED APPENDNETWORTH ---
+window.appendNetworth = function(newNetWorthYValues) {
+    if (!chart || !netSeries || !contribSeries) {
+        console.error("Chart not initialized. Cannot append data.");
+        return;
+    }
+    if (!Array.isArray(newNetWorthYValues) || newNetWorthYValues.length === 0) {
+        console.log("No new net worth data to append.");
+        return;
+    }
+
+    console.log("Appending new net worth data:", newNetWorthYValues.length, "points.");
+
+    let lastTimestamp = 0;
+    if (netSeries.data.length > 0) {
+        lastTimestamp = netSeries.data.at(-1).x;
+    } else if (currentAlignedHcNetWorth.length > 0) { // Fallback to original data if series is empty
+        lastTimestamp = currentAlignedHcNetWorth.at(-1)[0];
+    } else {
+        // No existing data, try to infer a start date or use Date.now()
+        // This case should ideally be handled by ensuring initial data exists.
+        lastTimestamp = Date.now() - (newNetWorthYValues.length * DAY_MS); // rough estimate
+        console.warn("No existing data to append to, timestamps might be arbitrary.");
+    }
+
+    const newNetWorthPointsForChart = [];
+    newNetWorthYValues.forEach(yValue => {
+        lastTimestamp += DAY_MS; // Increment by one day for each new point
+        newNetWorthPointsForChart.push([lastTimestamp, yValue]);
+        // Add to the global array used for TWRR source data
+        currentAlignedHcNetWorth.push([lastTimestamp, yValue]); 
+    });
+
+    // Add points to the Highcharts series
+    newNetWorthPointsForChart.forEach(point => {
+        netSeries.addPoint(point, false, false, false);
+    });
+
+    // Contributions data needs to be padded to match new net worth length
+    // For simplicity, assume contributions don't change during this append,
+    // so we carry forward the last known contribution value.
+    const lastContribY = currentAlignedHcContrib.length > 0 ? currentAlignedHcContrib.at(-1)[1] : 0;
+    const currentNetLength = currentAlignedHcNetWorth.length;
+    while (currentAlignedHcContrib.length < currentNetLength) {
+        const prevContribTimestamp = currentAlignedHcContrib.at(-1)[0];
+        const newContribTimestamp = currentAlignedHcNetWorth[currentAlignedHcContrib.length][0]; // Match net worth's timestamp
+        currentAlignedHcContrib.push([newContribTimestamp, lastContribY]);
+    }
+    
+    // Update the TWRR data source (Y-values only)
+    const yPortfolioForTwrr = currentAlignedHcNetWorth.map(p => p[1]);
+    const yContributionsForTwrr = currentAlignedHcContrib.map(p => p[1]);
+
+    if (yPortfolioForTwrr.length > 0) {
+        console.log("Recalculating TWRR series after append...");
+        twrrSeriesData = calculateRunningTotalTimeWeightedReturnSeries(yContributionsForTwrr, yPortfolioForTwrr);
+        console.log("New TWRR Series (last 5):", twrrSeriesData.slice(-5));
+    }
+
+    // Pad the visual contribution series on the chart
+    padContribForChartDisplay(); // This will use the updated netSeries length
+
+    chart.redraw(false); // Redraw chart without animation
+
+    // Update headline to the new last point
+    if (netSeries.points.length > 0) {
+        const tailNet = netSeries.points.at(-1);
+        // Ensure contribSeries also has a point, or use a sensible fallback for calculation
+        const tailContrib = contribSeries.points.length >= netSeries.points.length ? contribSeries.points.at(-1) : { y: lastContribY };
+        updateHeadline(tailNet.y, tailContrib.y, netSeries.points.length - 1);
+    }
+    console.log("Data appended and chart updated.");
+};
+
+window.appendContrib = (newPoints) => { console.warn("appendContrib not fully implemented, would require similar TWRR recalc."); };
+
+
 (async()=>{ // BOOTSTRAP
   try{
     const rawHcNetWorth = await loadJsonData('networth.json');
     const rawHcContrib = await loadJsonData('contributions.json');
+
     if (rawHcNetWorth.length === 0) {
         displayEl.textContent = '⚠️ No net worth data';
         gainEl.textContent = '';
         return;
     }
-    const { yPortfolio, yContributions, hcNetWorth, hcContrib } = alignAndPrepareData(rawHcNetWorth, rawHcContrib);
-    if (yPortfolio.length > 0) {
-        twrrSeriesData = calculateRunningTotalTimeWeightedReturnSeries(yContributions, yPortfolio);
+
+    // Initial alignment and TWRR calculation
+    const alignedData = alignAndPrepareData(rawHcNetWorth, rawHcContrib);
+    currentAlignedHcNetWorth = alignedData.hcNetWorth; // Store for potential appends
+    currentAlignedHcContrib = alignedData.hcContrib;   // Store for potential appends
+
+    if (alignedData.yPortfolio.length > 0) {
+        twrrSeriesData = calculateRunningTotalTimeWeightedReturnSeries(alignedData.yContributions, alignedData.yPortfolio);
     } else {
         twrrSeriesData = [];
     }
-    createGraph(hcNetWorth, hcContrib);
+
+    createGraph(currentAlignedHcNetWorth, currentAlignedHcContrib); // Use the stored aligned data for graph
+
+    // --- Example of using appendNetworth ---
+    // This dataToAppend should be defined or loaded from somewhere
+    let dataToAppend = [];
+
+    // Check if dataToAppend has content before calling
+    if (typeof dataToAppend !== 'undefined' && dataToAppend.length > 0) {
+        console.log("Attempting to append data from dataToAppend array...");
+        // appendNetworth(dataToAppend);
+    } else {
+        console.log("dataToAppend is empty or undefined, skipping appendNetworth call.");
+    }
+    // --- End Example ---
+
+
   }catch(e){
     console.error("Bootstrap error:", e);
     displayEl.textContent='⚠️ data load failed';
