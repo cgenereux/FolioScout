@@ -79,15 +79,12 @@ function calculateTWRR(startIndex, endIndex) {
     return (cumulativeGrowth - 1) * 100;
 }
 
-function updateHeadline(index) {
+function updateHeadline(index, seriesName = 'Net worth') {
     const point = dataPoints[index];
     if (!point) return;
 
-    const netVisible = netSeries?.visible;
-    const contribVisible = contribSeries?.visible;
-
-    // gold color when only contributions is shown
-    if (contribVisible && !netVisible) {
+    // show contributions style when hovering on contributions line
+    if (seriesName === 'Contributions') {
         headlineWrapEl.style.color = GOLD;
         animateDisplay(`$${formatNumber(point.contribution)}`);
         gainEl.textContent = '';
@@ -237,7 +234,7 @@ function createChart() {
                                 clearTimeout(resetHeadlineTimeoutId);
                                 resetHeadlineTimeoutId = null;
                             }
-                            updateHeadline(this.index);
+                            updateHeadline(this.index, this.series.name);
                         },
                         mouseOut: function() {
                             resetHeadlineTimeoutId = setTimeout(() => {
