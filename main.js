@@ -6,6 +6,7 @@ const gainEl = document.getElementById('gainHeadline');
 
 let dataPoints = [];
 let chart, netSeries, contribSeries;
+
 async function init() {
     await prepareData();
     createChart();
@@ -88,7 +89,7 @@ function updateHeadline(index) {
     // gold color when only contributions is shown
     if (contribVisible && !netVisible) {
         headlineWrapEl.style.color = GOLD;
-        displayEl.textContent = `$${formatNumber(point.contribution)}`;
+        animateDisplay(`$${formatNumber(point.contribution)}`);
         gainEl.textContent = '';
         return;
     }
@@ -100,7 +101,7 @@ function updateHeadline(index) {
     const gainSign = gain >= 0 ? '+' : '-';
     const twrrSign = twrr >= 0 ? '+' : '';
 
-    displayEl.textContent = `$${formatNumber(point.netWorth)}`;
+    animateDisplay(`$${formatNumber(point.netWorth)}`);
     gainEl.textContent = `${gainSign}$${formatNumber(Math.abs(gain))} (${twrrSign}${twrr.toFixed(2)}%)`;
 }
 
@@ -216,8 +217,19 @@ function createChart() {
                 },
                 point: {
                     events: {
-                        mouseOver: function() { updateHeadline(this.index); },
-                        mouseOut: function() { resetHeadline(); }
+                        mouseOver: function() {
+                            if (resetHeadlineTimeoutId) {
+                                clearTimeout(resetHeadlineTimeoutId);
+                                resetHeadlineTimeoutId = null;
+                            }
+                            updateHeadline(this.index);
+                        },
+                        mouseOut: function() {
+                            resetHeadlineTimeoutId = setTimeout(() => {
+                                const chartRef = this.series?.chart;
+                                if (!chartRef?.hoverPoint) resetHeadline();
+                            }, 0);
+                        }
                     }
                 }
             }

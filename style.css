@@ -15,6 +15,34 @@ body{
   color: var(--green); 
 }
 #myVariableDisplay{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums}
+
+/* sliding digit animation */
+.digit-slot {
+  display: inline-flex;
+  overflow: hidden;
+  height: 1em;
+  vertical-align: baseline;
+}
+.digit-stack {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.26s ease-out;
+}
+.digit-stack span {
+  height: 1em;
+  line-height: 1;
+}
+/* slide up: starts at 0 (showing top/old), slides to -50% (showing bottom/new) */
+.digit-stack.slide-up {
+  transform: translateY(-1em);
+}
+/* slide down: starts at -50% (showing bottom/old), slides to 0 (showing top/new) */
+.digit-stack[data-dir="down"] {
+  transform: translateY(-1em);
+}
+.digit-stack.slide-down {
+  transform: translateY(0);
+}
 #gainHeadline{font-size:16px;font-weight:600; min-height: 1.2em;} /* add min height to prevent layout shift */
 
 #container{width:70%;height:70vh}
