@@ -271,7 +271,10 @@ function createChart() {
 }
 
 function formatNumber(num) {
-    return num.toLocaleString('en-CA', { maximumFractionDigits: 2 });
+  return num.toLocaleString('en-CA', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 }
 
 function updateRangeButtons(activeRange) {
