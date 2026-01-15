@@ -174,7 +174,18 @@ function createChart() {
         xAxis: {
             type: 'datetime',
             minRange: 1,
-            labels: { style: { color: '#999' } },
+            tickAmount: 5,
+            labels: { 
+                style: { color: '#999' },
+            },
+            dateTimeLabelFormats: {
+                month: '%b \'%y',
+                year: '%Y'       
+            },
+            units: [
+                ['month', [1, 3, 6]],
+                ['year', [1]]
+            ],
             lineColor: '#999',
             crosshair: {
                 width: 1.5,
@@ -189,7 +200,7 @@ function createChart() {
                     formatter: function (value) {
                         return Highcharts.dateFormat('%b %d, %Y', value);
                     }
-                }
+                },
             }
         },
         yAxis: {
@@ -259,6 +270,7 @@ function createChart() {
 
     resetHeadline();
     initRangeSelector();
+    updateRangeButtons('all');
 }
 
 function formatNumber(num) {
