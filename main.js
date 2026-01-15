@@ -177,17 +177,17 @@ function createChart() {
             labels: { style: { color: '#999' } },
             lineColor: '#999',
             crosshair: {
-                width: 1.5, 
-                color: '#b8b8b8ff', 
+                width: 1.5,
+                color: '#b8b8b8ff',
                 label: {
                     enabled: true,
-                    backgroundColor: '#333', 
+                    backgroundColor: '#525252ff',
                     style: {
                         color: 'white',
                         fontWeight: 'bold'
                     },
                     formatter: function (value) {
-                        return Highcharts.dateFormat('%b %d, %Y', value); 
+                        return Highcharts.dateFormat('%b %d, %Y', value);
                     }
                 }
             }
