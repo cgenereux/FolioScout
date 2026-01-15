@@ -175,7 +175,22 @@ function createChart() {
             type: 'datetime',
             minRange: 1,
             labels: { style: { color: '#999' } },
-            lineColor: '#999'
+            lineColor: '#999',
+            crosshair: {
+                width: 1.5, 
+                color: '#b8b8b8ff', 
+                label: {
+                    enabled: true,
+                    backgroundColor: '#333', 
+                    style: {
+                        color: 'white',
+                        fontWeight: 'bold'
+                    },
+                    formatter: function (value) {
+                        return Highcharts.dateFormat('%b %d, %Y', value); 
+                    }
+                }
+            }
         },
         yAxis: {
             gridLineWidth: 0,
@@ -185,18 +200,7 @@ function createChart() {
         },
         legend: { layout: 'horizontal', align: 'right', verticalAlign: 'top' },
         tooltip: {
-            shared: true,
-            useHTML: true,
-            formatter: function() {
-                const points = this.points;
-                const date = Highcharts.dateFormat('%e %b %Y', points[0].x);
-                let rows = '';
-                for (const p of points) {
-                    const label = p.series.name === 'Net worth' ? 'Net Worth:' : 'Contributions:';
-                    rows += `${label}<br><span style="color:${p.series.color};font-weight:bold">$${formatNumber(p.y)}</span><br>`;
-                }
-                return `<div style="text-align:center;font-weight:600">${rows}${date}</div>`;
-            }
+            enabled: false
         },
         plotOptions: {
             series: {
