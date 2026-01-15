@@ -4,379 +4,269 @@ const headlineWrapEl = document.getElementById('headlineWrap');
 const displayEl = document.getElementById('myVariableDisplay');
 const gainEl = document.getElementById('gainHeadline');
 
-let chart, netSeries, contribSeries, twrrSeriesData;
+let dataPoints = [];
+let chart, netSeries, contribSeries;
+async function init() {
+    await prepareData();
+    createChart();
+    } 
+init();
 
-function formatNumber(num, fractionDigits = 2) {
-  const formatted = num.toLocaleString(undefined, {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits
-  });
-  return fractionDigits === 2 ? formatted.replace(/\.00$/, '') : formatted;
-}
+async function prepareData() {
+    const netWorthData = await extractData('data/networth.json');
+    const contributionData = await extractData('data/contributions.json');
 
-async function loadJsonData(path) {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error('Failed to fetch ' + path);
+    // build a map for fast date-based lookup since arrays may be out of sync
+    const contribByDate = new Map(contributionData.map(([date, val]) => [date, val]));
 
-  const rawData = await res.json();
-  const result = [];
+    let lastKnownContribution = 0;
 
-  for (let i = 0; i < rawData.length; i++) {
-    const item = rawData[i];
+    for (let i = 0; i < netWorthData.length; i++) {
+        const dateStr = netWorthData[i][0];
+        const utcDateInMS = Date.parse(dateStr);
 
-    // if bad data
-    if (!Array.isArray(item) || item.length !== 2) {
-      console.warn('Invalid data item:', item);
-      continue;
-    }
-
-    const date = new Date(item[0]);
-    // if bad date
-    if (isNaN(date.getTime())) {
-      console.warn('Invalid date:', item[0]);
-      continue;
-    }
-    result.push([date.getTime(), item[1]]);
-  }
-
-  return result;
-}
-
-function calculateTwrrSeries(contributions, portfolioValues) {
-  const n = portfolioValues.length;
-  if (n !== contributions.length) {
-    console.error('TWRR: arrays must be same length');
-    return Array(n).fill(NaN);
-  }
-  if (n === 0) return [];
-
-  let twrr = [0];
-  let cumulativeReturn = 1.0;
-
-  for (let i = 1; i < n; i++) {
-    const startValue = portfolioValues[i - 1];
-    const cashFlow = contributions[i] - contributions[i - 1];
-    const endValue = portfolioValues[i];
-    const base = startValue + cashFlow;
-
-    let periodReturn = 1.0;
-    if (base !== 0) {
-      periodReturn = endValue / base;
-    }
-    if (!isFinite(periodReturn)) {
-      periodReturn = 1.0;
-    }
-
-    cumulativeReturn *= periodReturn;
-    twrr.push((cumulativeReturn - 1) * 100);
-  }
-  return twrr;
-}
-
-function updateHeadline(netWorthVal, contribVal, pointIndex) {
-  const netVisible = netSeries?.visible;
-  const contribVisible = contribSeries?.visible;
-
-  if (contribVisible && !netVisible) {
-    headlineWrapEl.style.color = GOLD;
-    displayEl.textContent = `$${formatNumber(contribVal)}`;
-    gainEl.textContent = '';
-    return;
-  }
-
-  headlineWrapEl.style.color = GREEN;
-  const gain = netWorthVal - contribVal;
-
-  let twrr = 0;
-  if (twrrSeriesData && pointIndex >= 0 && pointIndex < twrrSeriesData.length) {
-    twrr = twrrSeriesData[pointIndex];
-  } else if (twrrSeriesData?.length > 0) {
-    twrr = twrrSeriesData.at(-1);
-  }
-  if (isNaN(twrr)) twrr = 0;
-
-  const twrrSign = twrr > 0 ? '+' : '';
-  displayEl.textContent = `$${formatNumber(netWorthVal)}`;
-  gainEl.textContent = `${gain >= 0 ? '+' : '-'}$${formatNumber(Math.abs(gain))} (${twrrSign}${formatNumber(twrr, 2)}%)`;
-}
-
-function alignSeries(netWorthSeries, contributionSeries) {
-  // turn these arrays into maps for fast lookups
-  const netWorthByTime = new Map(netWorthSeries);
-  const contribByTime = new Map(contributionSeries);
-
-  // collect every timestamp that appears in each series and then sort
-  const timestamps = Array.from(
-    new Set([
-      ...netWorthSeries.map(([timestamp]) => timestamp),
-      ...contributionSeries.map(([timestamp]) => timestamp)
-    ])
-  ).sort((a, b) => a - b);
-
-  const alignedNetWorth = [];
-  const alignedContrib = [];
-  const netWorthValues = [];
-  const contribValues = [];
-
-  let lastNetWorth = 0;
-  let lastContrib = 0;
-
-  for (const timestamp of timestamps) {
-    if (netWorthByTime.has(timestamp)) lastNetWorth = netWorthByTime.get(timestamp);
-    if (contribByTime.has(timestamp)) lastContrib = contribByTime.get(timestamp);
-
-    alignedNetWorth.push([timestamp, lastNetWorth]);
-    alignedContrib.push([timestamp, lastContrib]);
-
-    netWorthValues.push(lastNetWorth);
-    contribValues.push(lastContrib);
-  }
-
-  return {
-    alignedNetWorth,  
-    alignedContrib, 
-    netWorthValues, // for twrr 
-    contribValues // for twrrr
-  };
-}
-
-
-function padContribSeries() {
-  if (!netSeries?.points || !contribSeries?.points) return;
-
-  const netLen = netSeries.points.length;
-  const contribLen = contribSeries.points.length;
-
-  if (netLen > contribLen) {
-    let lastContribution = 0;
-    if (contribLen > 0) {
-      lastContribution = contribSeries.points[contribLen - 1].y;
-    }
-    for (let i = contribLen; i < netLen; i++) {
-      // series.addPoint(point, redraw, shift, animation) : no redraw, shift, or animation 
-      contribSeries.addPoint([netSeries.points[i].x, lastContribution], false, false, false);
-    }
-  }
-}
-
-function createChart(netData, contribData) {
-  Highcharts.setOptions({
-    lang: { thousandsSep: ',' }
-  });
-
-  chart = Highcharts.chart('container', {
-    chart: {
-      type: 'line',
-      zoomType: 'x',
-      animation: false
-    },
-    title: { text: '' },
-    xAxis: {
-      type: 'datetime',
-      dateTimeLabelFormats: { day: '%e %b %Y' },
-      labels: { style: { color: '#999' } },
-      lineColor: '#999'
-    },
-    yAxis: {
-      gridLineWidth: 0,
-      labels: { style: { color: '#999' } },
-      lineColor: '#999',
-      title: { text: null }
-    },
-    tooltip: {
-      shared: true,
-      useHTML: true,
-      formatter: function () {
-        var points = this.points;
-        var date = Highcharts.dateFormat('%e %b %Y', points[0].x);
-
-        var rows = '';
-        for (var i = 0; i < points.length; i++) {
-          var p = points[i];
-          var label = p.series.name === 'Net worth' ? 'Net Worth:' : 'Contributions:';
-          rows += label + '<br>';
-          rows += '<span style="color:' + p.series.color + ';font-weight:bold">';
-          rows += '$' + formatNumber(p.y) + '</span><br>';
+        // lookup contribution by date, fall back to last known
+        let currentContribution;
+        if (contribByDate.has(dateStr)) {
+            currentContribution = contribByDate.get(dateStr);
+            lastKnownContribution = currentContribution;
+        } else {
+            currentContribution = lastKnownContribution;
         }
 
-        return '<div style="text-align:center;font-weight:600">' + rows + date + '</div>';
-      }
-    },
-    legend: {
-      layout: 'vertical',
-      align: 'right',
-      verticalAlign: 'middle'
-    },
-    plotOptions: {
-      series: {
-        animation: false,
-        marker: {
-          enabled: false,
-          states: { hover: { radius: 4.5 } }
-        },
-        states: {
-          hover: { lineWidthPlus: 0 },
-          inactive: { opacity: 0.4, animation: false }
-        },
-        events: {
-          legendItemClick: function () {
-            setTimeout(function () {
-              if (!netSeries || !netSeries.points || netSeries.points.length === 0) {
-                return;
-              }
+        const currentNetGain = netWorthData[i][1] - currentContribution;
 
-              var lastIndex = netSeries.points.length - 1;
-              var lastNet = netSeries.points[lastIndex];
-              var lastContrib = contribSeries && contribSeries.points[lastIndex]
-                ? contribSeries.points[lastIndex]
-                : { y: 0 };
+        dataPoints.push({
+            netWorth: netWorthData[i][1],
+            contribution: currentContribution,
+            TWRR: null,
+            netGain: currentNetGain,
+            index: i,
+            date: utcDateInMS
+        });
+        dataPoints[i].TWRR = calculateTWRR(0, i);
+    }
+}
 
-              var firstValue = netSeries.visible ? lastNet.y : lastContrib.y;
-              var secondValue = contribSeries.visible ? lastContrib.y : lastNet.y;
+async function extractData(path) {
+    const data = await fetch(path);
+    if (!data.ok) console.error(`Error loading ${path} data.`);
+    return data.json();
+};
 
-              updateHeadline(firstValue, secondValue, lastIndex);
-            }, 0);
-            return true;
-          }
-        },
-        point: {
-          events: {
-            mouseOver: function () {
-              var hoveredPoint = this;
-              var idx = hoveredPoint.index;
-              var chartRef = hoveredPoint.series.chart;
+function calculateTWRR(startIndex, endIndex) {
+    let cumulativeGrowth = 1;
 
-              var netPoint = chartRef.series[0].data[idx];
-              var contribPoint = chartRef.series[1].data[idx];
-              if (!netPoint || !contribPoint) {
-                return;
-              }
+    for (let i = startIndex + 1; i <= endIndex; i++) {
+        const prevPoint = dataPoints[i - 1];
+        const currPoint = dataPoints[i];
 
-              // find the other series 
-              var otherSeries = chartRef.series[0] === hoveredPoint.series
-                ? chartRef.series[1]
-                : chartRef.series[0];
-              var otherPoint = otherSeries.data[idx];
+        const prevContrib = prevPoint.contribution ?? 0;
+        const currContrib = currPoint.contribution ?? 0;
+        const cashFlow = currContrib - prevContrib;
+        const base = prevPoint.netWorth + cashFlow;
 
-              hoveredPoint.setState('hover');
-              if (otherPoint) {
-                otherPoint.setState('hover');
-              }
+        let periodReturn = 1;
+        if (base !== 0) {
+            periodReturn = currPoint.netWorth / base;
+        }
+        if (!isFinite(periodReturn)) {
+            periodReturn = 1;
+        }
+        cumulativeGrowth *= periodReturn;
+    }
+    return (cumulativeGrowth - 1) * 100;
+}
 
-              updateHeadline(netPoint.y, contribPoint.y, idx);
+function updateHeadline(index) {
+    const point = dataPoints[index];
+    if (!point) return;
 
-              if (otherPoint) {
-                chartRef.tooltip.refresh([hoveredPoint, otherPoint]);
-              } else {
-                chartRef.tooltip.refresh([hoveredPoint]);
-              }
-            },
-            mouseOut: function () {
-              var hoveredPoint = this;
-              var chartRef = hoveredPoint.series.chart;
+    const netVisible = netSeries?.visible;
+    const contribVisible = contribSeries?.visible;
 
-              hoveredPoint.setState();
+    // gold color when only contributions is shown
+    if (contribVisible && !netVisible) {
+        headlineWrapEl.style.color = GOLD;
+        displayEl.textContent = `$${formatNumber(point.contribution)}`;
+        gainEl.textContent = '';
+        return;
+    }
 
-              var otherSeries = chartRef.series[0] === hoveredPoint.series
-                ? chartRef.series[1]
-                : chartRef.series[0];
-              var otherPoint = otherSeries.data[hoveredPoint.index];
-              if (otherPoint) {
-                otherPoint.setState();
-              }
+    headlineWrapEl.style.color = GREEN;
+    const gain = point.netGain;
+    const twrr = point.TWRR ?? 0;
 
-              chartRef.tooltip.hide();
-              resetHeadlineToLatest();
+    const gainSign = gain >= 0 ? '+' : '-';
+    const twrrSign = twrr >= 0 ? '+' : '';
+
+    displayEl.textContent = `$${formatNumber(point.netWorth)}`;
+    gainEl.textContent = `${gainSign}$${formatNumber(Math.abs(gain))} (${twrrSign}${twrr.toFixed(2)}%)`;
+}
+
+function resetHeadline() {
+    updateHeadline(dataPoints.length - 1);
+}
+
+function setRange(range) {
+    if (!chart || !dataPoints.length) return; 
+    const axis = chart.xAxis[0];
+
+    const startMs = getStartDate(range);
+    const endMs = dataPoints[dataPoints.length - 1].date;
+
+    if (!startMs ) { axis.setExtremes(null, null);
+    } else { axis.setExtremes(startMs, endMs); }
+
+    updateRangeButtons(range);
+    resetHeadline();
+    
+}
+
+function getStartDate(range) {
+    if (!dataPoints) return null;
+    // find the most up to date point in the dataPoints object array
+    const latestTimeStamp = new Date(dataPoints[dataPoints.length-1].date);
+    let startRangeTimeStamp = new Date(latestTimeStamp);
+
+    switch (range) {
+        case '1d':
+            // show last 2 data points
+            if (dataPoints.length >= 2) {
+                return dataPoints[dataPoints.length - 2].date;
             }
-          }
-        }
-      }
-    },
-    series: [
-      {
-        name: 'Net worth',
-        data: netData,
-        color: GREEN,
-        lineWidth: 2,
-        zIndex: 2
-      },
-      {
-        name: 'Contributions',
-        data: contribData,
-        color: GOLD,
-        lineWidth: 1.5,
-        zIndex: 1,
-        visible: false
-      }
-    ],
-    responsive: {
-      rules: [{
-        condition: { maxWidth: 500 },
-        chartOptions: {
-          legend: {
-            layout: 'horizontal',
-            align: 'center',
-            verticalAlign: 'bottom'
-          }
-        }
-      }]
+            return null;
+        case '1w':
+            startRangeTimeStamp.setUTCDate(startRangeTimeStamp.getUTCDate() - 7);
+            break;
+        case '1m':
+            startRangeTimeStamp.setUTCMonth(startRangeTimeStamp.getUTCMonth() - 1);
+            break;
+        case '3m':
+            startRangeTimeStamp.setUTCMonth(startRangeTimeStamp.getUTCMonth() - 3);
+            break;
+        case '1y':
+            startRangeTimeStamp.setUTCFullYear(startRangeTimeStamp.getUTCFullYear() - 1);
+            break;
+        case '2y':
+            startRangeTimeStamp.setUTCFullYear(startRangeTimeStamp.getUTCFullYear() - 2);
+            break;
+        case '3y':
+            startRangeTimeStamp.setUTCFullYear(startRangeTimeStamp.getUTCFullYear() - 3);
+            break;
+        case 'all':
+            return null;
+        default:
+            return null;
     }
-  });
-
-  netSeries = chart.series[0];
-  contribSeries = chart.series[1];
-  padContribSeries();
-
-  resetHeadlineToLatest();
-
-  chart.container.addEventListener('mouseleave', function () {
-    resetHeadlineToLatest();
-  });
+    return startRangeTimeStamp.getTime();
 }
 
-function resetHeadlineToLatest() {
-  if (!netSeries || !netSeries.points || netSeries.points.length === 0) {
-    updateHeadline(0, 0, 0);
-    return;
-  }
+function createChart() {
+    const netData = dataPoints.map(p => [p.date, p.netWorth]);
+    const contribData = dataPoints.map(p => [p.date, p.contribution]);
+    
+    chart = Highcharts.chart('container', {
+        chart: { type: 'line', zoomType: 'x', animation: false },
+        title: { text: '' },
+        credits: { enabled: false },
+        xAxis: {
+            type: 'datetime',
+            minRange: 1,
+            labels: { style: { color: '#999' } },
+            lineColor: '#999'
+        },
+        yAxis: {
+            gridLineWidth: 0,
+            labels: { style: { color: '#999' } },
+            lineColor: '#999',
+            title: { text: null }
+        },
+        legend: { layout: 'horizontal', align: 'right', verticalAlign: 'top' },
+        tooltip: {
+            shared: true,
+            useHTML: true,
+            formatter: function() {
+                const points = this.points;
+                const date = Highcharts.dateFormat('%e %b %Y', points[0].x);
+                let rows = '';
+                for (const p of points) {
+                    const label = p.series.name === 'Net worth' ? 'Net Worth:' : 'Contributions:';
+                    rows += `${label}<br><span style="color:${p.series.color};font-weight:bold">$${formatNumber(p.y)}</span><br>`;
+                }
+                return `<div style="text-align:center;font-weight:600">${rows}${date}</div>`;
+            }
+        },
+        plotOptions: {
+            series: {
+                animation: false,
+                marker: {
+                    enabled: false,
+                    states: { hover: { enabled: true, radius: 4 } }
+                },
+                states: {
+                    hover: { lineWidthPlus: 0 },
+                    inactive: { opacity: 0.4 }
+                },
+                events: {
+                    legendItemClick: function() {
+                        setTimeout(resetHeadline, 0);
+                        return true;
+                    }
+                },
+                point: {
+                    events: {
+                        mouseOver: function() { updateHeadline(this.index); },
+                        mouseOut: function() { resetHeadline(); }
+                    }
+                }
+            }
+        },
+        series: [
+            { name: 'Net worth', data: netData, color: GREEN, lineWidth: 2, zIndex: 2 },
+            { name: 'Contributions', data: contribData, color: GOLD, lineWidth: 1.5, zIndex: 1, visible: false }
+        ],
+        responsive: {
+            rules: [{
+                condition: { maxWidth: 500 },
+                chartOptions: {
+                    legend: { align: 'center', verticalAlign: 'bottom' }
+                }
+            }]
+        }
+    });
 
-  var lastIndex = netSeries.points.length - 1;
-  var lastNet = netSeries.points[lastIndex];
+    netSeries = chart.series[0];
+    contribSeries = chart.series[1];
 
-  var lastContrib;
-  if (contribSeries && contribSeries.points && contribSeries.points[lastIndex]) {
-    lastContrib = contribSeries.points[lastIndex];
-  } else {
-    lastContrib = { y: lastNet.y };
-  }
+    chart.container.addEventListener('mouseleave', resetHeadline);
 
-  updateHeadline(lastNet.y, lastContrib.y, lastIndex);
+    resetHeadline();
+    initRangeSelector();
 }
 
-(async () => {
-  try {
-    const rawNetWorth = await loadJsonData('data/networth.json');
-    const rawContrib = await loadJsonData('data/contributions.json');
+function formatNumber(num) {
+    return num.toLocaleString('en-CA', { maximumFractionDigits: 2 });
+}
 
-    if (rawNetWorth.length === 0) {
-      displayEl.textContent = 'No net worth data';
-      gainEl.textContent = '';
-      return;
+function updateRangeButtons(activeRange) {
+    const buttons = document.querySelectorAll('#rangeSelector button');
+    
+    for (let i = 0; i < buttons.length; i++) {
+        const btn = buttons[i];
+        const btnRange = btn.dataset.range;
+        
+        if (btnRange === activeRange) {
+            btn.classList.add('is-active');
+        } else {
+            btn.classList.remove('is-active');
+        }
     }
+}
 
-    const aligned = alignSeries(rawNetWorth, rawContrib);
-
-    if (aligned.netWorthValues.length > 0) {
-      twrrSeriesData = calculateTwrrSeries(aligned.contribValues, aligned.netWorthValues);
-    } else {
-      twrrSeriesData = [];
-    }
-
-    createChart(aligned.alignedNetWorth, aligned.alignedContrib);
-
-  } catch (e) {
-    console.error('Start error:', e);
-    displayEl.textContent = 'Data load failed';
-    gainEl.textContent = '';
-  }
-})();
+function initRangeSelector() {
+    document.getElementById('rangeSelector').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-range]');
+        if (btn) setRange(btn.dataset.range);
+    });
+}
