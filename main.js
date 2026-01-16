@@ -165,7 +165,25 @@ function createChart() {
     const contribData = dataPoints.map(p => [p.date, p.contribution]);
     
     chart = Highcharts.chart('container', {
-        chart: { type: 'line', zoomType: 'x', animation: false },
+        chart: { 
+            type: 'line',
+            zoomType: 'x',
+            animation: false,
+            resetZoomButton: {
+                theme: {
+                    fill: '#ffffff', 
+                    r: 12,   // round corners
+                    width: 70, 
+                    height: 10,
+                    // border
+                    stroke: '#cccccc', 
+                    strokeWidth: 1,
+                    style: {
+                        lineHeight: '40px', 
+                    }
+                }
+            },
+        },
         title: { text: '' },
         credits: { enabled: false },
         xAxis: {
