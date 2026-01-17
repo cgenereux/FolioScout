@@ -26,7 +26,7 @@ function animateDisplayNow(newValue) {
     previousDisplayValue = newValue;
 
     if (!oldValue) {
-        displayEl.textContent = newValue;
+        UI.display.textContent = newValue;
         flushPendingDisplayValue();
         return;
     }
@@ -82,18 +82,18 @@ function animateDisplayNow(newValue) {
             formattedHtmlString += newChar;
         }
     }
-    displayEl.innerHTML = formattedHtmlString;
-    const stacks = displayEl.querySelectorAll('.digit-stack[data-dir]');
+    UI.display.innerHTML = formattedHtmlString;
+    const stacks = UI.display.querySelectorAll('.digit-stack[data-dir]');
 
     if (stacks.length === 0 || !stacks.length) {
-        displayEl.textContent = newValue;
+        UI.display.textContent = newValue;
         flushPendingDisplayValue();
         return;
     }
     displayAnimating = true;
     
     // ask for the width to force the browser to paint the starting positions
-    void displayEl.offsetWidth;
+    void UI.display.offsetWidth;
 
     // trigger the slide
     stacks.forEach(stack => {

@@ -14,7 +14,7 @@ body{
   margin:32px 0 12px;line-height:1;user-select:none;
   color: var(--green); 
 }
-#myVariableDisplay{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums}
+#netWorthDisplay{font-size:32px;font-weight:900;font-variant-numeric:tabular-nums}
 
 .digit-slot {
   display: inline-flex;

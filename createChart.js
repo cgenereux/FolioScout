@@ -1,12 +1,24 @@
 function createChart() {
     const netData = dataPoints.map(p => [p.date, p.netWorth]);
-    const contribData = dataPoints.map(p => [p.date, p.contribution]);
+    const contributionsData = dataPoints.map(p => [p.date, p.contribution]);
     
     chart = Highcharts.chart('container', {
         chart: { 
             type: 'line',
             zoomType: 'x',
             animation: false,
+            events: {
+                selection: function (event) {
+                    if (event?.resetSelection) {
+                        setTimeout(resetHeader, 0);
+                        return true;
+                    }
+                    if (event?.xAxis?.[0]) {
+                        calculateAndShowZoomStats(event.xAxis[0].min, event.xAxis[0].max);
+                    }
+                    return true;
+                }
+            },
             resetZoomButton: {
                 theme: {
                     fill: '#ffffff', 
@@ -30,6 +42,13 @@ function createChart() {
             labels: { 
                 style: { color: '#999' },
             },
+            events: {
+                afterSetExtremes: function () {
+                    setTimeout(() => {
+                        if (!this?.chart?.hoverPoint) resetHeader();
+                    }, 0);
+                }
+            },
             dateTimeLabelFormats: {
                 month: '%b \'%y',
                 year: '%Y'       
@@ -41,7 +60,7 @@ function createChart() {
             lineColor: '#999',
             crosshair: {
                 width: 1.5,
-                color: '#b8b8b8ff',
+                color: COLORS.CROSSHAIR,
                 label: {
                     enabled: true,
                     backgroundColor: '#525252ff',
@@ -78,7 +97,7 @@ function createChart() {
                 },
                 events: {
                     legendItemClick: function() {
-                        setTimeout(resetHeadline, 0);
+                        setTimeout(resetHeader, 0);
                         return true;
                     }
                 },
@@ -89,12 +108,12 @@ function createChart() {
                                 clearTimeout(resetHeadlineTimeoutId);
                                 resetHeadlineTimeoutId = null;
                             }
-                            updateHeadline(this.index, this.series.name);
+                            updateHeader(this.index, this.series.name);
                         },
                         mouseOut: function() {
                             resetHeadlineTimeoutId = setTimeout(() => {
                                 const chartRef = this.series?.chart;
-                                if (!chartRef?.hoverPoint) resetHeadline();
+                                if (!chartRef?.hoverPoint) resetHeader();
                             }, 0);
                         }
                     }
@@ -102,8 +121,8 @@ function createChart() {
             }
         },
         series: [
-            { name: 'Net worth', data: netData, color: GREEN, lineWidth: 2, zIndex: 2 },
-            { name: 'Contributions', data: contribData, color: GOLD, lineWidth: 1.5, zIndex: 1, visible: false }
+            { name: 'Net worth', data: netData, color: COLORS.GREEN, lineWidth: 2, zIndex: 2 },
+            { name: 'Contributions', data: contributionsData, color: COLORS.GOLD, lineWidth: 1.5, zIndex: 1, visible: false }
         ],
         responsive: {
             rules: [{
@@ -115,12 +134,11 @@ function createChart() {
         }
     });
 
-    netSeries = chart.series[0];
-    contribSeries = chart.series[1];
+    netWorthSeries = chart.series[0];
 
-    chart.container.addEventListener('mouseleave', resetHeadline);
+    chart.container.addEventListener('mouseleave', resetHeader);
 
-    resetHeadline();
+    resetHeader();
     initRangeSelector();
     updateRangeButtons('all');
 }
@@ -130,4 +148,38 @@ function formatNumber(num) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   });
+}
+
+function calculateAndShowZoomStats(minDate, maxDate) {
+    let startIndex = dataPoints.findIndex(p => p.date >= minDate);
+    let endIndex = -1;
+    
+    for(let i = dataPoints.length - 1; i >= 0; i--) {
+        if (dataPoints[i].date <= maxDate) {
+            endIndex = i;
+            break;
+        }
+    }
+
+    if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) return;
+ 
+    const startPoint = dataPoints[startIndex];
+    const endPoint = dataPoints[endIndex];
+
+    const rangeTWRR = calculateTWRR(startIndex, endIndex);
+
+    const valChange = endPoint.netWorth - startPoint.netWorth;
+    const contributionsChange = endPoint.contribution - startPoint.contribution;
+    const rangeGain = valChange - contributionsChange;
+
+    const gainSign = rangeGain >= 0 ? '+' : '-';
+    const twrrSign = rangeTWRR >= 0 ? '+' : '';
+    const safeTwrr = Number.isFinite(rangeTWRR) ? rangeTWRR : 0;
+    const color = safeTwrr < 0 ? COLORS.RED : COLORS.GREEN;
+
+    UI.headline.style.color = color; 
+    setLockednetWorthSeriesColor(color);
+    
+    animateDisplay(`$${formatNumber(endPoint.netWorth)}`);
+    UI.gain.textContent = `${gainSign}$${formatNumber(Math.abs(rangeGain))} (${twrrSign}${rangeTWRR.toFixed(2)}%)`;
 }
