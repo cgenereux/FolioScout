@@ -9,24 +9,38 @@
   <script src="https://code.highcharts.com/stock/highstock.js"></script>
 </head>
 <body>
-  <div id="headlineWrap">
-    <div id="netWorthDisplay">$0</div>
-    <div id="gainHeadline">+$0 (+0.00%)</div>
+  <div id="mainContent">
+    <div id="headlineWrap">
+      <div id="netWorthDisplay">$0</div>
+      <div id="gainHeadline">+$0 (+0.00%)</div>
+    </div>
+    <div id="chartArea">
+      <button id="backToPortfolio" type="button" hidden>← Back to Portfolio</button>
+      <div id="container"></div>
+      <div id="rangeSelector" aria-label="Time range">
+        <button type="button" class="range-btn" data-range="1d">1D</button>
+        <button type="button" class="range-btn" data-range="1w">1W</button>
+        <button type="button" class="range-btn" data-range="1m">1M</button>
+        <button type="button" class="range-btn" data-range="3m">3M</button>
+        <button type="button" class="range-btn" data-range="1y">1Y</button>
+        <button type="button" class="range-btn" data-range="2y">2Y</button>
+        <button type="button" class="range-btn" data-range="3y">3Y</button>
+        <button type="button" class="range-btn" data-range="all">All</button>
+      </div>
+    </div>
+    <aside id="holdingsPanel">
+      <div class="holdings-title">Holdings</div>
+    </aside>
   </div>
-  <div id="container"></div>
-  <div id="rangeSelector" aria-label="Time range">
-    <button type="button" class="range-btn" data-range="1d">1D</button>
-    <button type="button" class="range-btn" data-range="1w">1W</button>
-    <button type="button" class="range-btn" data-range="1m">1M</button>
-    <button type="button" class="range-btn" data-range="3m">3M</button>
-    <button type="button" class="range-btn" data-range="1y">1Y</button>
-    <button type="button" class="range-btn" data-range="2y">2Y</button>
-    <button type="button" class="range-btn" data-range="3y">3Y</button>
-    <button type="button" class="range-btn" data-range="all">All</button>
-  </div>
-  <script src="main.js" defer></script>
-  <script src="animateText.js" defer></script>
-  <script src="createChart.js" defer></script>
-  <script src="config.js" defer></script>
+
+  <script src="src/config.js" defer></script>
+  <script src="src/state.js" defer></script>
+  <script src="src/format.js" defer></script>
+  <script src="src/calculate.js" defer></script>
+  <script src="src/dataLoader.js" defer></script>
+  <script src="src/ui/animateText.js" defer></script>
+  <script src="src/ui/createChart.js" defer></script>
+  <script src="src/main.js" defer></script>
+  <script src="src/scripts/appendRecentNetWorth.js" defer></script>
 </body>
 </html>

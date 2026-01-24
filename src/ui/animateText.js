@@ -1,6 +1,4 @@
-
 let previousDisplayValue = '';
-let resetHeadlineTimeoutId = null;
 let displayAnimating = false;
 let pendingDisplayValue = null;
 const SLIDE_DURATION_MS = 250;
@@ -36,8 +34,8 @@ function animateDisplayNow(newValue) {
     const oldParts = oldValue.split('.');
     const newParts = newValue.split('.');
 
-    const oldLeft = oldParts[0] || '';   // e.g. "$3,241"
-    const oldRight = oldParts[1] || '';  // e.g. "68"
+    const oldLeft = oldParts[0] || ''; 
+    const oldRight = oldParts[1] || '';
     const newLeft = newParts[0] || '';
     const newRight = newParts[1] || '';
 
