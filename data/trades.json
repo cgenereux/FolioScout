@@ -301,12 +301,7 @@
   {"date": "2026-01-13", "side": "BUY", "ticker": "XEQT", "amount": 82.8},
   {"date": "2026-01-13", "side": "SELL", "ticker": "AMD", "amount": 80.6},
   {"date": "2026-01-13", "side": "BUY", "ticker": "AMZN", "amount": 142.25},
-  {"date": "2026-01-04", "side": "BUY", "ticker": "XEQT", "amount": 200.75},
-  {"date": "2026-01-05", "side": "BUY", "ticker": "XEQT", "amount": 323.12},
-  {"date": "2026-01-12", "side": "SELL", "ticker": "GOOG", "amount": 429.2},
-  {"date": "2026-01-12", "side": "BUY", "ticker": "XEQT", "amount": 497.4},
-  {"date": "2026-01-13", "side": "SELL", "ticker": "AMZN", "amount": 142.3},
-  {"date": "2026-01-13", "side": "BUY", "ticker": "XEQT", "amount": 82.8},
-  {"date": "2026-01-13", "side": "SELL", "ticker": "AMD", "amount": 80.6},
-  {"date": "2026-01-13", "side": "BUY", "ticker": "AMZN", "amount": 142.25}
+  {"date": "2026-02-01", "side": "BUY", "ticker": "ORAC", "amount": 551.1},
+  {"date": "2026-02-01", "side": "BUY", "ticker": "ORAC", "amount": 166.8}
+
 ]
