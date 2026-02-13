@@ -177,8 +177,22 @@ function updateHeader(hoverIndex, seriesName = 'Net worth') {
     UI.gain.textContent = `${gainSign}$${formatNumber(Math.abs(gain))} (${twrrSign}${formatNumber(twrr)}%)`;
 }
 
+function getDefaultHeaderSeriesName() {
+    if (!AppState.chart?.series?.length) return 'Net worth';
+
+    const netWorthSeries = AppState.chart.series.find(series => series.name === 'Net worth');
+    const contributionsSeries = AppState.chart.series.find(series => series.name === 'Contributions');
+
+    if (contributionsSeries?.visible && netWorthSeries && !netWorthSeries.visible) {
+        return 'Contributions';
+    }
+
+    return 'Net worth';
+}
+
 function resetHeader() {
     if (!AppState.chart || !AppState.dataPoints.length) return;
+    const defaultSeriesName = getDefaultHeaderSeriesName();
 
     const axis = AppState.chart.xAxis[0];
     const ext = axis.getExtremes();
@@ -195,7 +209,12 @@ function resetHeader() {
         }
     }
     if (startIndex === -1 || endIndex === -1 || startIndex >= endIndex) {
-        updateHeader(AppState.dataPoints.length - 1);
+        updateHeader(AppState.dataPoints.length - 1, defaultSeriesName);
+        return;
+    }
+
+    if (defaultSeriesName === 'Contributions') {
+        updateHeader(endIndex, 'Contributions');
         return;
     }
 
