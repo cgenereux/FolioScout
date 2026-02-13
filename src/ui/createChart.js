@@ -1,5 +1,29 @@
+let _pendingZoneUpdate = null;
+let _zoneRafId = null;
+
 function setNetWorthSeriesZones(splitLocation, firstColor, secondColor) {
     if (!AppState.chart || !AppState.netWorthSeries) return;
+
+    const splitPart = splitLocation == null ? 'all' : splitLocation;
+    const styleKey = splitPart + '|' + firstColor + '|' + secondColor;
+
+    if (AppState.lastNetWorthSeriesStyleKey === styleKey) return;
+    AppState.lastNetWorthSeriesStyleKey = styleKey;
+
+    _pendingZoneUpdate = { splitLocation, firstColor, secondColor };
+
+    if (!_zoneRafId) {
+        _zoneRafId = requestAnimationFrame(flushZoneUpdate);
+    }
+}
+
+function flushZoneUpdate() {
+    _zoneRafId = null;
+    const pending = _pendingZoneUpdate;
+    if (!pending || !AppState.chart || !AppState.netWorthSeries) return;
+    _pendingZoneUpdate = null;
+
+    const { splitLocation, firstColor, secondColor } = pending;
 
     let zones;
     if (splitLocation == null) {
@@ -10,12 +34,6 @@ function setNetWorthSeriesZones(splitLocation, firstColor, secondColor) {
             { color: secondColor }
         ];
     }
-
-    const splitPart = splitLocation == null ? 'all' : splitLocation;
-    const styleKey = splitPart + '|' + firstColor + '|' + secondColor;
-
-    if (AppState.lastNetWorthSeriesStyleKey === styleKey) return;
-    AppState.lastNetWorthSeriesStyleKey = styleKey;
 
     const hoverColor = splitLocation == null ? secondColor : firstColor;
 
@@ -41,7 +59,7 @@ function setNetWorthSeriesZones(splitLocation, firstColor, secondColor) {
             }
         }
     }, false);
-    AppState.chart.redraw();
+    AppState.chart.redraw(false);
 }
 
 function setLockednetWorthSeriesColor(color) {
