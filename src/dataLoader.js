@@ -9,11 +9,13 @@ async function loadStockPrices(tickers) {
         try {
             const data = await extractData(`data/stockPriceHistory/${ticker}.json`);
             AppState.stockPrices[ticker] = {};
+            AppState.stockPriceDatesByTicker[ticker] = [];
             for (const row of data || []) {
                 const date = row?.[0];
                 const price = row?.[1];
                 if (typeof date === 'string' && typeof price === 'number') {
                     AppState.stockPrices[ticker][date] = price;
+                    AppState.stockPriceDatesByTicker[ticker].push(date);
                 }
             }
         } catch (e) {
@@ -27,14 +29,28 @@ function getStockPrice(ticker, dateStr) {
     if (!AppState.stockPrices[ticker]) return 0;
     if (AppState.stockPrices[ticker][dateStr]) return AppState.stockPrices[ticker][dateStr];
 
-    // if the exact date isn't found, find the closest earlier date
-    const dates = Object.keys(AppState.stockPrices[ticker]).sort();
-    let closestPrice = 0;
-    for (const d of dates) {
-        if (d <= dateStr) closestPrice = AppState.stockPrices[ticker][d];
-        else break;
+    // find closest earlier date via binary search on preloaded sorted date list
+    const dates = AppState.stockPriceDatesByTicker[ticker];
+    if (!Array.isArray(dates) || !dates.length) return 0;
+
+    let lo = 0;
+    let hi = dates.length - 1;
+    let bestIdx = -1;
+
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const midDate = dates[mid];
+
+        if (midDate <= dateStr) {
+            bestIdx = mid;
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
     }
-    return closestPrice;
+
+    if (bestIdx === -1) return 0;
+    return AppState.stockPrices[ticker][dates[bestIdx]] ?? 0;
 }
 
 function getTickersFromTrades(trades) {

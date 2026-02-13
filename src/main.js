@@ -2,9 +2,12 @@ let resetHeadlineTimeoutId = null;
 
 async function init() {
     initUI();
+    warmHeaderFromLatestData();
+    const initialHoldingsPromise = initHoldingsPanel();
     await prepareData();
     AppState.portfolioDataPoints = AppState.dataPoints.slice();
     initRangeSelector();
+    await initialHoldingsPromise;
     await initHoldingsPanel();
     initBackButton();
     createChart();
@@ -240,6 +243,70 @@ function resetHeader() {
     UI.gain.textContent = `${gainSign}$${formatNumber(Math.abs(gain))} (${twrrSign}${formatNumber(twrr)}%)`;
 }
 
+async function warmHeaderFromLatestData() {
+    try {
+        const [netWorthData, contributionData] = await Promise.all([
+            extractData('data/networth.json'),
+            extractData('data/contributions.json')
+        ]);
+        if (!Array.isArray(netWorthData) || !netWorthData.length) return;
+
+        const contributionsByDate = {};
+        for (const entry of contributionData || []) {
+            if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'number') {
+                contributionsByDate[entry[0]] = entry[1];
+            }
+        }
+
+        let lastKnownContribution = 0;
+        let previousNetWorth = null;
+        let previousContribution = 0;
+        let cumulativeGrowth = 1;
+
+        let latestNetWorth = netWorthData[0][1];
+        let latestContribution = 0;
+
+        for (let i = 0; i < netWorthData.length; i++) {
+            const dateStr = netWorthData[i][0];
+            const netWorth = netWorthData[i][1];
+            if (typeof dateStr !== 'string' || typeof netWorth !== 'number') continue;
+
+            if (contributionsByDate[dateStr] !== undefined) {
+                lastKnownContribution = contributionsByDate[dateStr];
+            }
+            const currentContribution = lastKnownContribution;
+
+            if (previousNetWorth !== null) {
+                const cashFlow = currentContribution - previousContribution;
+                const base = previousNetWorth + cashFlow;
+                if (base !== 0) {
+                    const ratio = netWorth / base;
+                    if (isFinite(ratio)) cumulativeGrowth *= ratio;
+                }
+            }
+
+            previousNetWorth = netWorth;
+            previousContribution = currentContribution;
+            latestNetWorth = netWorth;
+            latestContribution = currentContribution;
+        }
+
+        const twrr = (cumulativeGrowth - 1) * 100;
+        const gain = latestNetWorth - latestContribution;
+        const color = twrr < 0 ? COLORS.RED : COLORS.GREEN;
+
+        UI.headline.style.color = color;
+
+        const gainSign = gain >= 0 ? '+' : '-';
+        const twrrSign = twrr >= 0 ? '+' : '';
+
+        animateDisplay(`$${formatNumber(latestNetWorth)}`);
+        UI.gain.textContent = `${gainSign}$${formatNumber(Math.abs(gain))} (${twrrSign}${formatNumber(twrr)}%)`;
+    } catch (e) {
+        // header warm-up is best-effort only
+    }
+}
+
 function setRange(range) {
     if (!AppState.chart || !AppState.dataPoints.length) return;
     const axis = AppState.chart.xAxis[0];
@@ -342,6 +409,8 @@ async function initHoldingsPanel() {
 
 function initHoldingsPanelDelegation() {
     if (!UI.holdingsPanel) return;
+    if (AppState.holdingsPanelDelegationInitialized) return;
+    AppState.holdingsPanelDelegationInitialized = true;
     UI.holdingsPanel.addEventListener('click', (e) => {
         const item = e.target.closest('.holding-item');
         if (item?.dataset.ticker) loadStock(item.dataset.ticker);
@@ -360,6 +429,7 @@ function renderHoldingsPanel(holdings) {
     if (AppState.dataPoints.length > 0) {
         tickersToRender = sortTickersByWeightAtIndex(tickersToRender, AppState.dataPoints.length - 1);
     }
+    const shouldShowLogoImages = Object.keys(AppState.latestReturnPercentByTicker).length > 0;
 
     const fragment = document.createDocumentFragment();
 
@@ -372,7 +442,7 @@ function renderHoldingsPanel(holdings) {
         item.dataset.ticker = ticker;
         item.innerHTML = `
             <div class="holding-logo-box ${isBlack ? 'is-black' : ''}">
-                ${logoUrl
+                ${logoUrl && shouldShowLogoImages
                     ? `<img src="${logoUrl}" alt="${ticker} logo" class="holding-logo">`
                     : `<div class="holding-logo-fallback">${ticker[0]}</div>`}
             </div>
@@ -428,6 +498,8 @@ function shouldUseBlackLogoBox(ticker) {
 }
 
 function shouldShowTicker(ticker) {
+    if (Object.keys(AppState.latestReturnPercentByTicker).length === 0) return true;
+
     const percent = AppState.latestReturnPercentByTicker[ticker];
     if (typeof percent !== 'number') return false;
     if (Math.abs(percent) < 1e-9) return false;

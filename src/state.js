@@ -33,6 +33,7 @@ const AppState = {
 
     // stock price histories
     stockPrices: {},
+    stockPriceDatesByTicker: {},
 
     // holding logo paths 
     logosByTicker: {},
@@ -49,7 +50,8 @@ const AppState = {
     // quick lookup for updating weights in the holdings panel
     holdingWeightElByTicker: {},
     holdingValueElByTicker: {},
-    holdingReturnElByTicker: {}
+    holdingReturnElByTicker: {},
+    holdingsPanelDelegationInitialized: false
 };
 
 function initUI() {
