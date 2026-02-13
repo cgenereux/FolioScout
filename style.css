@@ -44,8 +44,9 @@ body{
 #gainHeadline{font-size:16px;font-weight:600; min-height: 1.2em;}
 
 #mainContent{
+  --chart-width:900px;
   display:grid;
-  grid-template-columns: 900px 200px;
+  grid-template-columns: var(--chart-width) 200px;
   grid-template-rows: auto auto;
   justify-content:center;
   align-items:start;
@@ -66,8 +67,9 @@ body{
   display:flex;
   flex-direction:column;
   align-items:center;
+  width:var(--chart-width);
 }
-#container{width:100%;max-width:900px;height:70vh}
+#container{width:100%;max-width:var(--chart-width);height:70vh}
 
 /* Back to Portfolio button */
 #backToPortfolio{
@@ -237,4 +239,16 @@ body{
 }
 .highcharts-legend-item.highcharts-series-inactive > text {
   text-decoration: none !important;
+}
+
+@media (min-width: 1700px) {
+  #mainContent {
+    --chart-width: clamp(900px, 53vw, 1170px);
+  }
+  #container .highcharts-series-0 .highcharts-graph {
+    stroke-width: clamp(2px, 0.118vw, 2.6px) !important;
+  }
+  #container .highcharts-series-1 .highcharts-graph {
+    stroke-width: clamp(1.5px, 0.088vw, 1.95px) !important;
+  }
 }
