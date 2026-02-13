@@ -2,6 +2,7 @@ import 'dotenv/config';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import '../config.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +12,12 @@ const DATA_DIR = path.join(ROOT_DIR, 'data/stockPriceHistory');
 const META_FILE = path.join(DATA_DIR, '_last_update.json');
 
 const PRICE_SOURCE = 'tiingo';
+const sharedConfig = globalThis.FolioScoutConfig || {};
+const useAlphaVantageTickers = Array.isArray(sharedConfig.useAlphaVantageTickers)
+  ? sharedConfig.useAlphaVantageTickers
+  : [];
+const alphaVantageSymbolByTicker = sharedConfig.alphaVantageSymbolByTicker || {};
+const alphaVantageTickerSet = new Set(useAlphaVantageTickers.map((ticker) => ticker.toUpperCase()));
 
 function log(msg) {
   console.log(`[updateStockPrices] ${msg}`);
@@ -93,6 +100,11 @@ function getTiingoToken() {
 
 function getFmpKey() {
   const key = process.env.FMP_API_KEY;
+  return key && key.trim() ? key.trim() : null;
+}
+
+function getAlphaVantageKey() {
+  const key = process.env.ALPHA_VANTAGE_API_KEY;
   return key && key.trim() ? key.trim() : null;
 }
 
@@ -184,12 +196,67 @@ async function fetchFmpPrices(ticker, startDate, key) {
   return rows.length ? rows : null;
 }
 
-async function fetchPrices(ticker, startDate, key) {
-  if (PRICE_SOURCE === 'fmp') return fetchFmpPrices(ticker, startDate, key);
-  return fetchTiingoPrices(ticker, startDate, key);
+async function fetchAlphaVantagePrices(symbol, startDate, key) {
+  const url =
+    `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY` +
+    `&outputsize=compact` +
+    `&symbol=${encodeURIComponent(symbol)}` +
+    `&apikey=${encodeURIComponent(key)}`;
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    log(`${symbol}: Alpha Vantage HTTP ${res.status} ${body ? `- ${body.slice(0, 140)}` : ''}`);
+    return null;
+  }
+
+  const json = await res.json();
+  if (typeof json?.['Error Message'] === 'string') {
+    log(`${symbol}: Alpha Vantage error - ${json['Error Message']}`);
+    return null;
+  }
+  if (typeof json?.Note === 'string') {
+    log(`${symbol}: Alpha Vantage note - ${json.Note}`);
+    return null;
+  }
+  if (typeof json?.Information === 'string') {
+    log(`${symbol}: Alpha Vantage info - ${json.Information}`);
+    return null;
+  }
+
+  const series = json?.['Time Series (Daily)'];
+  if (!series || typeof series !== 'object') {
+    const keys = Object.keys(json || {});
+    log(`${symbol}: Alpha Vantage returned empty data${keys.length ? ` (keys: ${keys.join(', ')})` : ''}`);
+    return null;
+  }
+
+  const rows = [];
+  for (const [date, item] of Object.entries(series)) {
+    if (date < startDate) continue;
+    const price = Number(item?.['4. close']);
+    if (Number.isFinite(price)) rows.push([date, price]);
+  }
+
+  rows.sort((a, b) => a[0].localeCompare(b[0]));
+  return rows.length ? rows : null;
 }
 
-async function updateOneTicker(ticker, key) {
+async function fetchPrices(ticker, startDate, keys) {
+  if (alphaVantageTickerSet.has(ticker)) {
+    if (!keys.alphaVantage) {
+      log(`${ticker}: missing ALPHA_VANTAGE_API_KEY`);
+      return null;
+    }
+    const symbol = alphaVantageSymbolByTicker[ticker] || `${ticker}.TRT`;
+    return fetchAlphaVantagePrices(symbol, startDate, keys.alphaVantage);
+  }
+
+  if (PRICE_SOURCE === 'fmp') return fetchFmpPrices(ticker, startDate, keys.primary);
+  return fetchTiingoPrices(ticker, startDate, keys.primary);
+}
+
+async function updateOneTicker(ticker, keys) {
   const filePath = path.join(DATA_DIR, `${ticker}.json`);
 
   const existingRows = (await readJsonFile(filePath)) || [];
@@ -203,7 +270,7 @@ async function updateOneTicker(ticker, key) {
   const lastDate = existingRows.length ? existingRows[existingRows.length - 1][0] : null;
   const startDate = lastDate ? subtractDays(lastDate, 7) : '2020-01-01';
 
-  const newRows = await fetchPrices(ticker, startDate, key);
+  const newRows = await fetchPrices(ticker, startDate, keys);
   if (!newRows) {
     log(`${ticker}: no data (skipping, keeping existing JSON)`);
     return false;
@@ -246,6 +313,8 @@ async function main() {
       return;
     }
   }
+  const alphaVantageKey = getAlphaVantageKey();
+  const keys = { primary: key, alphaVantage: alphaVantageKey };
 
   await fs.mkdir(DATA_DIR, { recursive: true });
 
@@ -262,13 +331,14 @@ async function main() {
   let updatedCount = 0;
   for (const ticker of tickersToUse) {
     try {
-      const updated = await updateOneTicker(ticker, key);
+      const updated = await updateOneTicker(ticker, keys);
       if (updated) updatedCount += 1;
     } catch (e) {
       log(`${ticker}: error (skipping, keeping existing JSON)`);
     }
 
-    await new Promise((r) => setTimeout(r, 250));
+    const delayMs = alphaVantageTickerSet.has(ticker) ? 13000 : 250;
+    await new Promise((r) => setTimeout(r, delayMs));
   }
 
   await writeJsonFilePretty(META_FILE, {

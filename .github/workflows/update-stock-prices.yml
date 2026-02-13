@@ -25,6 +25,7 @@ jobs:
       - name: Update stock prices
         env:
           TIINGO_TOKEN: ${{ secrets.TIINGO_TOKEN }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
         run: node src/scripts/updateStockPrices.js
 
       - name: Update forex rates

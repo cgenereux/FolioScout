@@ -145,7 +145,7 @@
   {"date": "2024-07-29", "side": "SELL", "ticker": "VFV", "amount": 14.81},
   {"date": "2024-07-30", "side": "BUY", "ticker": "INTC", "amount": 21.81},
   {"date": "2024-07-31", "side": "BUY", "ticker": "GOOG", "amount": 7.03},
-  {"date": "2024-07-31", "side": "BUY", "ticker": "SQ", "amount": 1.03},
+  {"date": "2024-07-31", "side": "BUY", "ticker": "XYZ", "amount": 1.03},
   {"date": "2024-07-31", "side": "BUY", "ticker": "AMZN", "amount": 5.61},
   {"date": "2024-08-01", "side": "BUY", "ticker": "INTC", "amount": 39.501000000000005},
   {"date": "2024-08-12", "side": "SELL", "ticker": "TSLA", "amount": 265.2345},
@@ -301,7 +301,7 @@
   {"date": "2026-01-13", "side": "BUY", "ticker": "XEQT", "amount": 82.8},
   {"date": "2026-01-13", "side": "SELL", "ticker": "AMD", "amount": 80.6},
   {"date": "2026-01-13", "side": "BUY", "ticker": "AMZN", "amount": 142.25},
-  {"date": "2026-02-01", "side": "BUY", "ticker": "ORAC", "amount": 551.1},
-  {"date": "2026-02-01", "side": "BUY", "ticker": "ORAC", "amount": 166.8}
+  {"date": "2026-02-01", "side": "BUY", "ticker": "ORCL", "amount": 551.1},
+  {"date": "2026-02-01", "side": "BUY", "ticker": "ORCL", "amount": 166.8}
 
 ]
